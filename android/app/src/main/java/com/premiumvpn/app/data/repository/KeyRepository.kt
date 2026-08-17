@@ -59,15 +59,20 @@ class KeyRepository @Inject constructor(
             val serverUrl = "https://${key.host}:${key.port}/"
             val api = OutlineApiService.create(serverUrl, okHttpClient)
 
-            val metrics = api.getMetrics()
+            // Try to get metrics, default to 0 if API fails (cached view)
+            val metrics = try {
+                api.getMetrics()
+            } catch (e: Exception) {
+                null
+            }
 
-            val keyMetrics = metrics.accessKeys.find {
+            val keyMetrics = metrics?.accessKeys?.find {
                 it.accessKeyId.toString() == key.id
             }
 
             val usage = KeyUsageStats(
                 keyId = id,
-                bytesUsed = keyMetrics?.dataTransferred?.bytes ?: 0,
+                bytesUsed = keyMetrics?.dataTransferred?.bytes ?: key.bytesUsed,
                 tunnelTimeSeconds = keyMetrics?.tunnelTime?.seconds?.toLong() ?: 0,
                 lastTrafficSeen = keyMetrics?.connection?.lastTrafficSeen?.toLong() ?: 0,
                 peakDevices = keyMetrics?.connection?.peakDeviceCount?.data ?: 0,

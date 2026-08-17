@@ -18,6 +18,7 @@ import androidx.lifecycle.viewModelScope
 import com.premiumvpn.app.data.local.KeyEntity
 import com.premiumvpn.app.data.repository.KeyRepository
 import com.premiumvpn.app.domain.model.KeyUsageStats
+import com.premiumvpn.app.ui.components.DataUsageCard
 import com.premiumvpn.app.util.Formatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.firstOrNull
@@ -130,83 +131,11 @@ fun StatsScreen(
                 }
             }
 
-            // Data Usage Card
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "Data Usage",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    if (stats != null) {
-                        val s = stats!!
-
-                        if (s.hasLimit) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text("Used", style = MaterialTheme.typography.bodySmall)
-                                    Text(
-                                        Formatter.formatBytes(s.bytesUsed),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("Limit", style = MaterialTheme.typography.bodySmall)
-                                    Text(
-                                        Formatter.formatBytes(s.dataLimitBytes ?: 0),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            LinearProgressIndicator(
-                                progress = { s.usagePercent / 100f },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp)
-                                    .padding(vertical = 8.dp),
-                                color = when {
-                                    s.usagePercent > 90 -> Color(0xFFEA4335)
-                                    s.usagePercent > 70 -> Color(0xFFFBBC04)
-                                    else -> Color(0xFF34A853)
-                                },
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-
-                            Text(
-                                text = "Remaining: ${Formatter.formatBytes(s.remainingBytes)}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else {
-                            Text(
-                                text = Formatter.formatBytes(s.bytesUsed),
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "No data limit set",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else if (isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    }
-                }
-            }
+            // Data Usage Card (reusable component)
+            DataUsageCard(
+                bytesUsed = stats?.bytesUsed ?: 0,
+                dataLimitBytes = stats?.dataLimitBytes
+            )
 
             // Connection Details Card
             Card(modifier = Modifier.fillMaxWidth()) {

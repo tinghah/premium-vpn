@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +30,7 @@ import com.premiumvpn.app.domain.model.KeyUsageStats
 import com.premiumvpn.app.service.VpnService
 import com.premiumvpn.app.util.Formatter
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -47,14 +49,52 @@ class HomeViewModel @Inject constructor(
     private val _activeKeyStats = MutableStateFlow<KeyUsageStats?>(null)
     val activeKeyStats: StateFlow<KeyUsageStats?> = _activeKeyStats.asStateFlow()
 
-    fun connect(key: KeyEntity, context: Context) {
-        val intent = Intent(context, VpnService::class.java).apply {
-            action = VpnService.ACTION_CONNECT
-            putExtra(VpnService.EXTRA_SERVER_ADDR, "${key.host}:${key.port}")
-            putExtra(VpnService.EXTRA_PASSWORD, key.password)
-            putExtra(VpnService.EXTRA_METHOD, key.method)
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    private var refreshJob: kotlinx.coroutines.Job? = null
+
+    init {
+        refreshStats()
+        startPeriodicRefresh()
+    }
+
+    private fun startPeriodicRefresh() {
+        refreshJob = viewModelScope.launch {
+            while (true) {
+                delay(30000)
+                val activeKey = keyRepository.getActiveKey()
+                activeKey?.let {
+                    keyRepository.refreshKeyStats(it.id)
+                        .onSuccess { stats -> _activeKeyStats.value = stats }
+                }
+            }
         }
-        context.startForegroundService(intent)
+    }
+
+    fun refreshStats() {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            val activeKey = keyRepository.getActiveKey()
+            activeKey?.let {
+                keyRepository.refreshKeyStats(it.id)
+                    .onSuccess { stats -> _activeKeyStats.value = stats }
+            }
+            _isRefreshing.value = false
+        }
+    }
+
+    fun connect(key: KeyEntity, context: Context) {
+        viewModelScope.launch {
+            keyRepository.setActiveKey(key.id)
+            val intent = Intent(context, VpnService::class.java).apply {
+                action = VpnService.ACTION_CONNECT
+                putExtra(VpnService.EXTRA_SERVER_ADDR, "${key.host}:${key.port}")
+                putExtra(VpnService.EXTRA_PASSWORD, key.password)
+                putExtra(VpnService.EXTRA_METHOD, key.method)
+            }
+            context.startForegroundService(intent)
+        }
     }
 
     fun disconnect(context: Context) {
@@ -62,6 +102,11 @@ class HomeViewModel @Inject constructor(
             action = VpnService.ACTION_DISCONNECT
         }
         context.startService(intent)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        refreshJob?.cancel()
     }
 }
 
@@ -76,6 +121,7 @@ fun HomeScreen(
     val keys by viewModel.keys.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val activeStats by viewModel.activeKeyStats.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val context = LocalContext.current
 
     Scaffold(
@@ -85,7 +131,16 @@ fun HomeScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                ),
+                actions = {
+                    IconButton(onClick = { viewModel.refreshStats() }) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                }
             )
         },
         floatingActionButton = {
@@ -115,7 +170,6 @@ fun HomeScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Connection Status Card
             item {
                 ConnectionStatusCard(
                     isConnected = connectionState == VpnService.ConnectionState.CONNECTED,
@@ -131,7 +185,6 @@ fun HomeScreen(
                 )
             }
 
-            // Key List Header
             item {
                 Text(
                     text = "My Keys",
@@ -204,7 +257,6 @@ fun ConnectionStatusCard(
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Status indicator
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -227,7 +279,6 @@ fun ConnectionStatusCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Usage stats
             if (stats != null && stats.hasLimit) {
                 val usedFormatted = Formatter.formatBytes(stats.bytesUsed)
                 val limitFormatted = Formatter.formatBytes(stats.dataLimitBytes ?: 0)
@@ -274,7 +325,6 @@ fun ConnectionStatusCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Connect/Disconnect button
             Button(
                 onClick = onToggle,
                 modifier = Modifier
