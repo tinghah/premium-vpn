@@ -14,7 +14,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class VpnService : VpnService() {
@@ -22,6 +21,11 @@ class VpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
+    private var networkMonitor: NetworkMonitor? = null
+
+    private var pendingServerAddr: String? = null
+    private var pendingPassword: String? = null
+    private var pendingMethod: String? = null
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -32,10 +36,13 @@ class VpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CONNECT -> {
-                val serverAddr = intent.getStringExtra(EXTRA_SERVER_ADDR) ?: return START_NOT_STICKY
-                val password = intent.getStringExtra(EXTRA_PASSWORD) ?: return START_NOT_STICKY
-                val method = intent.getStringExtra(EXTRA_METHOD) ?: "aes-256-gcm"
-                startVpn(serverAddr, password, method)
+                pendingServerAddr = intent.getStringExtra(EXTRA_SERVER_ADDR)
+                pendingPassword = intent.getStringExtra(EXTRA_PASSWORD)
+                pendingMethod = intent.getStringExtra(EXTRA_METHOD) ?: "aes-256-gcm"
+
+                if (pendingServerAddr != null && pendingPassword != null) {
+                    startVpn(pendingServerAddr!!, pendingPassword!!, pendingMethod!!)
+                }
             }
             ACTION_DISCONNECT -> {
                 stopVpn()
@@ -67,7 +74,6 @@ class VpnService : VpnService() {
                     return@launch
                 }
 
-                // Start the Go native tunnel
                 val started = GoVpnBridge.startTunnel(
                     localPort = 0,
                     serverAddr = serverAddr,
@@ -87,6 +93,7 @@ class VpnService : VpnService() {
                 _connectionState.value = ConnectionState.CONNECTED
                 updateNotification("Connected to $serverAddr")
                 startStatsCollection()
+                startNetworkMonitoring()
 
             } catch (e: Exception) {
                 Log.e(TAG, "VPN connection failed", e)
@@ -98,8 +105,36 @@ class VpnService : VpnService() {
         }
     }
 
+    private fun startNetworkMonitoring() {
+        networkMonitor?.stopMonitoring()
+        networkMonitor = NetworkMonitor(this).apply {
+            startMonitoring {
+                // Network restored — attempt reconnection
+                serviceScope.launch {
+                    Log.i(TAG, "Network restored, reconnecting VPN...")
+                    _connectionState.value = ConnectionState.CONNECTING
+
+                    GoVpnBridge.stopTunnel()
+                    vpnInterface?.close()
+                    vpnInterface = null
+
+                    delay(1000) // Brief delay before reconnect
+
+                    val server = pendingServerAddr
+                    val pass = pendingPassword
+                    val meth = pendingMethod
+                    if (server != null && pass != null && meth != null) {
+                        startVpn(server, pass, meth)
+                    }
+                }
+            }
+        }
+    }
+
     private fun stopVpn() {
         statsJob?.cancel()
+        networkMonitor?.stopMonitoring()
+        networkMonitor = null
         GoVpnBridge.stopTunnel()
         vpnInterface?.close()
         vpnInterface = null
@@ -111,13 +146,12 @@ class VpnService : VpnService() {
     private fun startStatsCollection() {
         statsJob = serviceScope.launch {
             while (isActive) {
-                val sent = GoVpnBridge.getBytesTransferred() / 2
-                val received = GoVpnBridge.getBytesTransferred() / 2
+                val transferred = GoVpnBridge.getBytesTransferred()
                 val duration = GoVpnBridge.getDuration()
 
                 _stats.value = VpnStats(
-                    bytesSent = sent,
-                    bytesReceived = received,
+                    bytesSent = transferred / 2,
+                    bytesReceived = transferred / 2,
                     durationSeconds = duration
                 )
                 delay(1000)
@@ -156,6 +190,7 @@ class VpnService : VpnService() {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+        networkMonitor?.stopMonitoring()
         GoVpnBridge.stopTunnel()
         vpnInterface?.close()
     }

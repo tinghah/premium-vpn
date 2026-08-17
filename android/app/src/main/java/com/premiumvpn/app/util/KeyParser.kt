@@ -1,14 +1,15 @@
 package com.premiumvpn.app.util
 
+import android.net.Uri
 import android.util.Base64
-import java.net.URI
 
 data class ParsedKey(
     val password: String,
     val host: String,
     val port: Int,
     val method: String,
-    val name: String
+    val name: String,
+    val serverApiSecret: String? = null
 )
 
 object KeyParser {
@@ -20,7 +21,7 @@ object KeyParser {
         if (!ssUrl.startsWith("ss://")) return null
 
         return try {
-            val uri = URI(ssUrl)
+            val uri = Uri.parse(ssUrl)
             val host = uri.host ?: return null
             val port = if (uri.port > 0) uri.port else DEFAULT_PORT
 
@@ -49,18 +50,20 @@ object KeyParser {
 
             if (password.isEmpty()) return null
 
-            val name = URI(ssUrl).query
-                ?.split("&")
-                ?.find { it.startsWith("tag=") }
-                ?.substringAfter("=")
+            val name = uri.getQueryParameter("tag")
                 ?: "$host:$port"
+
+            // Extract server API secret from path or query parameter
+            val serverApiSecret = uri.getQueryParameter("secret")
+                ?: uri.lastPathSegment
 
             ParsedKey(
                 password = password,
                 host = host,
                 port = port,
                 method = method,
-                name = name
+                name = name,
+                serverApiSecret = serverApiSecret
             )
         } catch (e: Exception) {
             null
