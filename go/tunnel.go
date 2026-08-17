@@ -1,6 +1,7 @@
 package mobileproxy
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -25,14 +26,14 @@ type Stats struct {
 
 // Tunnel manages the VPN tunnel connection
 type Tunnel struct {
-	mu          sync.RWMutex
-	state       TunnelState
-	stats       Stats
-	serverAddr  string
-	password    string
-	method      string
-	localPort   int
-	stopCh      chan struct{}
+	mu         sync.RWMutex
+	state      TunnelState
+	stats      Stats
+	serverAddr string
+	password   string
+	method     string
+	localPort  int
+	stopCh     chan struct{}
 }
 
 var (
@@ -40,7 +41,7 @@ var (
 	once          sync.Once
 )
 
-func GetTunnel() *Tunnel {
+func getTunnel() *Tunnel {
 	once.Do(func() {
 		defaultTunnel = &Tunnel{
 			state:  StateDisconnected,
@@ -59,7 +60,7 @@ func GetTunnel() *Tunnel {
 //   - password: Shadowsocks password
 //   - method: encryption method (e.g., "aes-256-gcm", "chacha20-ietf-poly1305")
 func StartTunnel(localPort int, serverAddr, password, method string) error {
-	t := GetTunnel()
+	t := getTunnel()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -75,7 +76,6 @@ func StartTunnel(localPort int, serverAddr, password, method string) error {
 	t.stats = Stats{StartTime: time.Now()}
 	t.stopCh = make(chan struct{})
 
-	// Start tunnel in background goroutine
 	go t.run()
 
 	return nil
@@ -89,25 +89,26 @@ func (t *Tunnel) run() {
 		t.mu.Unlock()
 	}()
 
-	// TODO: Implement actual Shadowsocks tunnel using Outline SDK
-	// This will:
+	// TODO: Implement actual Shadowsocks tunnel using Outline SDK:
 	// 1. Create a Shadowsocks dialer with the provided credentials
 	// 2. Set up a local SOCKS5 proxy
 	// 3. Forward traffic through the encrypted tunnel
 	// 4. Collect traffic stats
+	//
+	// Example with Outline SDK (when available):
+	//   dialer, err := shadowsocks.NewDialer(t.serverAddr, &shadowsocks.Config{
+	//       Password: t.password,
+	//       Cipher:   t.method,
+	//   })
+	//   ln, err := net.Listen("tcp", fmt.Sprintf(":%d", t.localPort))
+	//   // ... accept and forward connections
 
-	log.Printf("Tunnel starting to %s with method %s", t.serverAddr, t.method)
-
-	// Placeholder: simulate connection
-	// In real implementation, this calls into Outline SDK's shadowsocks package
 	<-t.stopCh
-
-	log.Printf("Tunnel stopped")
 }
 
 // StopTunnel gracefully stops the VPN tunnel
 func StopTunnel() {
-	t := GetTunnel()
+	t := getTunnel()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -121,7 +122,7 @@ func StopTunnel() {
 
 // IsConnected returns true if the tunnel is currently active
 func IsConnected() bool {
-	t := GetTunnel()
+	t := getTunnel()
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.state == StateConnected
@@ -130,7 +131,7 @@ func IsConnected() bool {
 // GetState returns the current tunnel state as an integer
 // 0=Disconnected, 1=Connecting, 2=Connected, 3=Error
 func GetState() int {
-	t := GetTunnel()
+	t := getTunnel()
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return int(t.state)
@@ -138,7 +139,7 @@ func GetState() int {
 
 // GetBytesSent returns total bytes sent through the tunnel
 func GetBytesSent() int64 {
-	t := GetTunnel()
+	t := getTunnel()
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.stats.BytesSent
@@ -146,7 +147,7 @@ func GetBytesSent() int64 {
 
 // GetBytesReceived returns total bytes received through the tunnel
 func GetBytesReceived() int64 {
-	t := GetTunnel()
+	t := getTunnel()
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.stats.BytesReceived
@@ -154,7 +155,7 @@ func GetBytesReceived() int64 {
 
 // GetBytesTransferred returns total bytes (sent + received) through the tunnel
 func GetBytesTransferred() int64 {
-	t := GetTunnel()
+	t := getTunnel()
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.stats.BytesSent + t.stats.BytesReceived
@@ -162,7 +163,7 @@ func GetBytesTransferred() int64 {
 
 // GetDuration returns the connection duration in seconds
 func GetDuration() int64 {
-	t := GetTunnel()
+	t := getTunnel()
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	if t.state != StateConnected {
@@ -173,7 +174,7 @@ func GetDuration() int64 {
 
 // GetLastError returns the last error message, or empty string if no error
 func GetLastError() string {
-	t := GetTunnel()
+	t := getTunnel()
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.stats.LastError
@@ -181,7 +182,7 @@ func GetLastError() string {
 
 // ResetStats resets all traffic statistics to zero
 func ResetStats() {
-	t := GetTunnel()
+	t := getTunnel()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.stats = Stats{StartTime: time.Now()}

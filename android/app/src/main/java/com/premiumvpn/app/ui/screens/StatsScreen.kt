@@ -20,6 +20,7 @@ import com.premiumvpn.app.data.repository.KeyRepository
 import com.premiumvpn.app.domain.model.KeyUsageStats
 import com.premiumvpn.app.util.Formatter
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -39,11 +40,11 @@ class StatsViewModel @Inject constructor(
 
     fun loadKey(keyId: String) {
         viewModelScope.launch {
-            _key.value = keyRepository.getAllKeys()
-                .first { keys -> keys.any { it.id == keyId } }
-                .first { it.id == keyId }
-
-            refreshStats(keyId)
+            val found = keyRepository.getKeyById(keyId)
+            _key.value = found
+            if (found != null) {
+                refreshStats(keyId)
+            }
         }
     }
 

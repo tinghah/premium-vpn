@@ -18,11 +18,12 @@ import com.premiumvpn.app.data.remote.AuthApiService
 import com.premiumvpn.app.data.remote.LoginRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import javax.inject.Inject
 
 @HiltViewModel
 class LoginViewModel @Inject constructor(
-    private val authApi: AuthApiService
+    private val okHttpClient: OkHttpClient
 ) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(false)
@@ -31,15 +32,16 @@ class LoginViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    fun login(email: String, password: String, onSuccess: () -> Unit) {
+    fun login(baseUrl: String, email: String, password: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
 
             try {
+                val authApi = AuthApiService.create(baseUrl, okHttpClient)
                 val response = authApi.login(LoginRequest(email, password))
-                // TODO: Store token securely
-                // TODO: Import keys from response
+                // TODO: Store token securely in EncryptedSharedPreferences
+                // TODO: Import keys from response into Room DB
                 onSuccess()
             } catch (e: Exception) {
                 _error.value = e.message ?: "Login failed"
@@ -57,6 +59,7 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     viewModel: LoginViewModel = hiltViewModel()
 ) {
+    var serverUrl by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -86,6 +89,15 @@ fun LoginScreen(
                 text = "Sign in to your account to access your VPN keys",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+                value = serverUrl,
+                onValueChange = { serverUrl = it },
+                label = { Text("Server URL") },
+                placeholder = { Text("https://myserver.com:1234/SECRET/") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
             )
 
             OutlinedTextField(
@@ -126,9 +138,9 @@ fun LoginScreen(
             }
 
             Button(
-                onClick = { viewModel.login(email, password, onLoginSuccess) },
+                onClick = { viewModel.login(serverUrl, email, password, onLoginSuccess) },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = email.isNotBlank() && password.isNotBlank() && !isLoading
+                enabled = serverUrl.isNotBlank() && email.isNotBlank() && password.isNotBlank() && !isLoading
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(

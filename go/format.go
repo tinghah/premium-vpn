@@ -33,7 +33,7 @@ func FormatDuration(seconds int64) string {
 	d := time.Duration(seconds) * time.Second
 	hours := int(d.Hours())
 	minutes := int(d.Minutes()) % 60
- secs := int(d.Seconds()) % 60
+	secs := int(d.Seconds()) % 60
 
 	if hours > 0 {
 		return fmt.Sprintf("%dh %dm %ds", hours, minutes, secs)

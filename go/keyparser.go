@@ -15,7 +15,6 @@ type AccessKey struct {
 	Port     int
 	Method   string
 	Name     string
-	Tag      string
 }
 
 // ParseAccessKey parses an Outline ss:// access key URL.
@@ -28,7 +27,6 @@ func ParseAccessKey(rawURL string) (*AccessKey, error) {
 		return nil, fmt.Errorf("invalid ss:// URL: missing ss:// prefix")
 	}
 
-	// Parse the URL
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse URL: %w", err)
@@ -41,7 +39,7 @@ func ParseAccessKey(rawURL string) (*AccessKey, error) {
 		return nil, fmt.Errorf("invalid ss:// URL: missing host")
 	}
 
-	port := 8388 // default Shadowsocks port
+	port := 8388
 	if portStr != "" {
 		port, err = strconv.Atoi(portStr)
 		if err != nil {
@@ -49,22 +47,18 @@ func ParseAccessKey(rawURL string) (*AccessKey, error) {
 		}
 	}
 
-	// Extract password and method from userinfo
 	var password, method string
 	userInfo := u.User.String()
 
 	if userInfo != "" {
-		// Try Base64-decoded format first
 		decoded, err := base64.StdEncoding.DecodeString(userInfo)
 		if err == nil {
-			// Successfully decoded — format is method:password
 			parts := strings.SplitN(string(decoded), ":", 2)
 			if len(parts) == 2 {
 				method = parts[0]
 				password = parts[1]
 			}
 		} else {
-			// Not Base64 — try plain format method:password
 			parts := strings.SplitN(userInfo, ":", 2)
 			if len(parts) == 2 {
 				method = parts[0]
@@ -77,12 +71,10 @@ func ParseAccessKey(rawURL string) (*AccessKey, error) {
 		return nil, fmt.Errorf("invalid ss:// URL: missing password")
 	}
 
-	// Default method
 	if method == "" {
 		method = "aes-256-gcm"
 	}
 
-	// Extract tag (name) from query params
 	name := u.Query().Get("tag")
 	if name == "" {
 		name = fmt.Sprintf("%s:%d", host, port)
@@ -94,7 +86,6 @@ func ParseAccessKey(rawURL string) (*AccessKey, error) {
 		Port:     port,
 		Method:   method,
 		Name:     name,
-		Tag:      u.Query().Get("tag"),
 	}, nil
 }
 

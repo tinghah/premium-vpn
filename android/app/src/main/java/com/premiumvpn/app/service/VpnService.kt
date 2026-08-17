@@ -9,7 +9,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.premiumvpn.app.App
 import com.premiumvpn.app.MainActivity
-import com.premiumvpn.app.R
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,9 +18,6 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class VpnService : VpnService() {
-
-    @Inject
-    lateinit var keyRepository: com.premiumvpn.app.data.repository.KeyRepository
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -65,16 +61,28 @@ class VpnService : VpnService() {
                 vpnInterface = builder.establish()
 
                 if (vpnInterface == null) {
+                    Log.e(TAG, "Failed to establish VPN interface")
                     _connectionState.value = ConnectionState.ERROR
                     stopSelf()
                     return@launch
                 }
 
-                // TODO: Pass vpnInterface.fd to Go native code
-                // The Go code will:
-                // 1. Create Shadowsocks connection to serverAddr
-                // 2. Set up tun2socks using the TUN file descriptor
-                // 3. Forward all traffic through the encrypted tunnel
+                // Start the Go native tunnel
+                val started = GoVpnBridge.startTunnel(
+                    localPort = 0,
+                    serverAddr = serverAddr,
+                    password = password,
+                    method = method
+                )
+
+                if (!started) {
+                    Log.e(TAG, "Failed to start native tunnel")
+                    _connectionState.value = ConnectionState.ERROR
+                    vpnInterface?.close()
+                    vpnInterface = null
+                    stopSelf()
+                    return@launch
+                }
 
                 _connectionState.value = ConnectionState.CONNECTED
                 updateNotification("Connected to $serverAddr")
@@ -83,6 +91,8 @@ class VpnService : VpnService() {
             } catch (e: Exception) {
                 Log.e(TAG, "VPN connection failed", e)
                 _connectionState.value = ConnectionState.ERROR
+                vpnInterface?.close()
+                vpnInterface = null
                 stopSelf()
             }
         }
@@ -90,6 +100,7 @@ class VpnService : VpnService() {
 
     private fun stopVpn() {
         statsJob?.cancel()
+        GoVpnBridge.stopTunnel()
         vpnInterface?.close()
         vpnInterface = null
         _connectionState.value = ConnectionState.DISCONNECTED
@@ -100,13 +111,14 @@ class VpnService : VpnService() {
     private fun startStatsCollection() {
         statsJob = serviceScope.launch {
             while (isActive) {
-                // TODO: Read stats from Go native code
-                // val bytesSent = Mobileproxy.getBytesSent()
-                // val bytesReceived = Mobileproxy.getBytesReceived()
+                val sent = GoVpnBridge.getBytesTransferred() / 2
+                val received = GoVpnBridge.getBytesTransferred() / 2
+                val duration = GoVpnBridge.getDuration()
+
                 _stats.value = VpnStats(
-                    bytesSent = 0,
-                    bytesReceived = 0,
-                    durationSeconds = 0
+                    bytesSent = sent,
+                    bytesReceived = received,
+                    durationSeconds = duration
                 )
                 delay(1000)
             }
@@ -144,6 +156,7 @@ class VpnService : VpnService() {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+        GoVpnBridge.stopTunnel()
         vpnInterface?.close()
     }
 

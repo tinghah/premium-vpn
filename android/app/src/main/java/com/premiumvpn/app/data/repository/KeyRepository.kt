@@ -6,13 +6,14 @@ import com.premiumvpn.app.data.remote.OutlineApiService
 import com.premiumvpn.app.domain.model.KeyUsageStats
 import com.premiumvpn.app.util.KeyParser
 import kotlinx.coroutines.flow.Flow
+import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class KeyRepository @Inject constructor(
     private val keyDao: KeyDao,
-    private val outlineApi: OutlineApiService
+    private val okHttpClient: OkHttpClient
 ) {
 
     fun getAllKeys(): Flow<List<KeyEntity>> = keyDao.getAllKeys()
@@ -48,10 +49,17 @@ class KeyRepository @Inject constructor(
 
     suspend fun getActiveKey(): KeyEntity? = keyDao.getActiveKey()
 
+    suspend fun getKeyById(id: String): KeyEntity? = keyDao.getKeyById(id)
+
     suspend fun refreshKeyStats(id: String): Result<KeyUsageStats> {
         return try {
-            val metrics = outlineApi.getMetrics()
             val key = keyDao.getKeyById(id) ?: return Result.failure(Exception("Key not found"))
+
+            // Create API service for this key's server
+            val serverUrl = "https://${key.host}:${key.port}/"
+            val api = OutlineApiService.create(serverUrl, okHttpClient)
+
+            val metrics = api.getMetrics()
 
             val keyMetrics = metrics.accessKeys.find {
                 it.accessKeyId.toString() == key.id
