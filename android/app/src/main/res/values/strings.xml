@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Premium VPN</string>
+    <string name="vpn_notification_channel">VPN Service</string>
+    <string name="vpn_connected">VPN Connected</string>
+    <string name="vpn_disconnected">VPN Disconnected</string>
+    <string name="vpn_connecting">Connecting…</string>
+    <string name="vpn_notification_title">Premium VPN</string>
+    <string name="vpn_notification_text">Protecting your connection</string>
+    <string name="add_key">Add Key</string>
+    <string name="paste_key_hint">Paste your ss:// access key</string>
+    <string name="key_name_hint">Key Name</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="login">Login</string>
+    <string name="no_keys">No keys added yet</string>
+    <string name="data_used">Data Used</string>
+    <string name="data_remaining">Remaining</string>
+    <string name="data_limit">Data Limit</string>
+    <string name="last_active">Last Active</string>
+    <string name="connected_devices">Devices</string>
+    <string name="now">now</string>
+</resources>

@@ -1,0 +1,23 @@
+# Build outputs
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+
+# Go build outputs
+go/out/
+*.aar
+*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated files
+android/app/libs/*.aar
+android/app/libs/*.jar
